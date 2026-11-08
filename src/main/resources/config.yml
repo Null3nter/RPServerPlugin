@@ -3,7 +3,7 @@
 # Discord Bot Token (from Discord Developer Portal)
 bot-token: "YOUR_DISCORD_BOT_TOKEN"
 
-# Your Discord Server (Guild) ID
+# Your Discord Server (Guild) ID – the full RP Hub
 guild-id: "YOUR_DISCORD_SERVER_ID"
 
 # Discord user ID of the guild owner (required for hierarchy commands)
@@ -15,20 +15,32 @@ co-owner-ids: []
 # Bot-admin Discord role IDs (managed via /management-owner-admin)
 bot-admin-role-ids: []
 
-# Staff Discord role IDs (managed via /management-admin)
+# Staff Discord role IDs – can see/close all tickets (managed via /management-admin)
 staff-role-ids: []
 
-# Roles allowed to /verify and play
+# Roles allowed to /verify and play on the SMP
 allowed-role-ids: []
 
 # In-game chat → Discord webhook
 chat-webhook-url: "YOUR_CHAT_WEBHOOK_URL"
 
-# Channel where /ticket messages are posted as embeds
-ticket-channel-id: "DISCORD_TICKET_CHANNEL_ID"
-
 # Audit log webhook for all admin/management actions
 audit-log-webhook-url: "YOUR_AUDIT_WEBHOOK_URL"
+
+# ─── Dual Ticket System ───────────────────────────────────────────
+# Two separate systems: PUBLIC (non-SMP) and SMP (verified members)
+
+# Channel IDs where the ticket PANEL embeds are posted
+# Use /ticket-panel public or /ticket-panel smp to post the buttons
+ticket-panel-channel-public: ""
+ticket-panel-channel-smp: ""
+
+# Category IDs under which private ticket channels are created
+ticket-category-public: ""
+ticket-category-smp: ""
+
+# Optional: channel where closed-ticket transcripts are posted
+ticket-transcript-channel-id: ""
 
 # Players who skip Discord linking (UUID or username)
 manual-bypass-players: []
