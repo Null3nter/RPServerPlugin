@@ -9,21 +9,27 @@ guild-id: "YOUR_DISCORD_SERVER_ID"
 
 # List of Discord Role IDs that are allowed to verify / join
 # Players must have at least ONE of these roles to successfully /verify
-# Example:
-# allowed-role-ids:
-#   - "123456789012345678"   # Server Booster
-#   - "987654321098765432"   # VIP
-#   - "111222333444555666"   # Staff
 allowed-role-ids: []
+
+# Staff role IDs – members with these roles can use Discord staff commands
+# (/manual-link, close tickets, etc.)
+staff-role-ids: []
 
 # Discord Webhook URL for in-game chat synchronization
 chat-webhook-url: "YOUR_DISCORD_WEBHOOK_URL"
 
+# Audit / staff log webhook – receives admin actions, tickets, force-verifies, etc.
+audit-webhook-url: "YOUR_AUDIT_WEBHOOK_URL"
+
+# Optional: Discord category ID where ticket channels are created
+# Leave blank to create channels at the top level of the server
+ticket-category-id: ""
+
+# Optional: Channel ID where ticket transcripts are posted when a ticket is closed
+ticket-transcript-channel-id: ""
+
 # Players who can join without Discord linking (UUID or username)
-# Example:
-# manual-bypass-players:
-#   - "069a79f4-44e9-4726-a5be-fca90e38aaf5"
-#   - "Notch"
+# Can also be managed in-game with /staff add|remove
 manual-bypass-players: []
 
 # How long (in seconds) a generated link code remains valid
