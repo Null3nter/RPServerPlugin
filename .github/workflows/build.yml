@@ -27,23 +27,32 @@ jobs:
       - name: Build with Maven
         run: mvn -B package --file pom.xml
 
+      - name: Read plugin version from pom.xml
+        id: version
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          SHORT_SHA=${GITHUB_SHA::7}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "name=RPServerPlugin v${VERSION} (${SHORT_SHA})" >> $GITHUB_OUTPUT
+
       - name: Upload plugin JAR (Actions artifact)
         uses: actions/upload-artifact@v4
         with:
           name: RPServerPlugin
           path: target/RPServerPlugin-*.jar
 
-      # Only create a real GitHub Release on pushes to main (not on PRs)
-      - name: Create / Update continuous "latest" Release
+      # Create a brand-new unique release on every push to main
+      - name: Create new GitHub Release
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Latest Build
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.name }}
           body_path: CHANGELOG.md
           files: |
             target/RPServerPlugin-*.jar
             CHANGELOG.md
-          prerelease: true
+          prerelease: false
           make_latest: true
-          generate_release_notes: false
+          generate_release_notes: true
