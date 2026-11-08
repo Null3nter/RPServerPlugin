@@ -1,13 +1,11 @@
 package com.rpserver.plugin;
 
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
-import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.entities.channel.concrete.Category;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -19,8 +17,8 @@ import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
+import java.awt.Color;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 public class DiscordBot extends ListenerAdapter {
 
@@ -28,7 +26,6 @@ public class DiscordBot extends ListenerAdapter {
     private JDA jda;
     private String guildId;
     private Set<String> allowedRoleIds = new HashSet<>();
-    private Set<String> staffRoleIds = new HashSet<>();
 
     public DiscordBot(RPServerPlugin plugin) {
         this.plugin = plugin;
@@ -39,23 +36,8 @@ public class DiscordBot extends ListenerAdapter {
         this.guildId = plugin.getConfig().getString("guild-id", "");
 
         allowedRoleIds.clear();
-        List<String> roles = plugin.getConfig().getStringList("allowed-role-ids");
-        if (roles != null) {
-            for (String r : roles) {
-                if (r != null && !r.isBlank() && !r.contains("YOUR_")) {
-                    allowedRoleIds.add(r.trim());
-                }
-            }
-        }
-
-        staffRoleIds.clear();
-        List<String> staffRoles = plugin.getConfig().getStringList("staff-role-ids");
-        if (staffRoles != null) {
-            for (String r : staffRoles) {
-                if (r != null && !r.isBlank() && !r.contains("YOUR_")) {
-                    staffRoleIds.add(r.trim());
-                }
-            }
+        for (String r : plugin.getConfig().getStringList("allowed-role-ids")) {
+            if (r != null && !r.isBlank() && !r.contains("YOUR_")) allowedRoleIds.add(r.trim());
         }
 
         if (token == null || token.isBlank() || token.contains("YOUR_DISCORD")) {
@@ -64,7 +46,7 @@ public class DiscordBot extends ListenerAdapter {
         }
 
         jda = JDABuilder.createDefault(token)
-                .enableIntents(GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.MESSAGE_CONTENT)
+                .enableIntents(GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES)
                 .setMemberCachePolicy(MemberCachePolicy.ALL)
                 .addEventListeners(this)
                 .build();
@@ -73,44 +55,56 @@ public class DiscordBot extends ListenerAdapter {
 
         Guild guild = resolveGuild();
 
-        var commandList = List.of(
+        var commands = List.of(
                 Commands.slash("verify", "Link your Minecraft account using the code from /link")
-                        .addOption(OptionType.STRING, "code", "The 4-digit code shown in Minecraft", true),
-                Commands.slash("ticket", "Create or close a support ticket")
+                        .addOption(OptionType.STRING, "code", "The 4-digit code from Minecraft", true),
+
+                Commands.slash("management-owner", "Manage co-owners (Guild Owner only)")
                         .addSubcommands(
-                                new SubcommandData("create", "Create a support ticket")
-                                        .addOption(OptionType.STRING, "reason", "Why are you opening a ticket?", true),
-                                new SubcommandData("close", "Close your current support ticket")
+                                new SubcommandData("list", "List co-owners"),
+                                new SubcommandData("add", "Add a co-owner")
+                                        .addOption(OptionType.USER, "user", "Discord user", true),
+                                new SubcommandData("remove", "Remove a co-owner")
+                                        .addOption(OptionType.USER, "user", "Discord user", true)
                         ),
-                Commands.slash("manual-link", "Staff: manually link a Minecraft account to a Discord user")
-                        .addOption(OptionType.STRING, "minecraft", "Minecraft username", true)
-                        .addOption(OptionType.USER, "discord", "Discord user to link", true)
+
+                Commands.slash("management-admin", "Manage staff roles (Owner / Co-Owners)")
+                        .addSubcommands(
+                                new SubcommandData("list", "List staff role IDs"),
+                                new SubcommandData("add", "Add a staff role")
+                                        .addOption(OptionType.ROLE, "role", "Discord role", true),
+                                new SubcommandData("remove", "Remove a staff role")
+                                        .addOption(OptionType.ROLE, "role", "Discord role", true)
+                        ),
+
+                Commands.slash("management-owner-admin", "Manage bot-admin roles (Owner / Co-Owners)")
+                        .addSubcommands(
+                                new SubcommandData("list", "List bot-admin role IDs"),
+                                new SubcommandData("add", "Add a bot-admin role")
+                                        .addOption(OptionType.ROLE, "role", "Discord role", true),
+                                new SubcommandData("remove", "Remove a bot-admin role")
+                                        .addOption(OptionType.ROLE, "role", "Discord role", true)
+                        )
         );
 
         if (guild != null) {
-            guild.updateCommands().addCommands(commandList).queue();
-            plugin.getLogger().info("Registered Discord slash commands in guild " + guild.getName());
+            guild.updateCommands().addCommands(commands).queue();
+            plugin.getLogger().info("Registered Discord slash commands in " + guild.getName());
         } else {
-            jda.updateCommands().addCommands(commandList).queue();
+            jda.updateCommands().addCommands(commands).queue();
             plugin.getLogger().info("Registered Discord slash commands globally.");
         }
 
-        plugin.getLogger().info("Loaded " + allowedRoleIds.size() + " allowed role(s) and "
-                + staffRoleIds.size() + " staff role(s).");
+        plugin.getLogger().info("Loaded " + allowedRoleIds.size() + " allowed role(s).");
     }
 
     public void shutdown() {
-        if (jda != null) {
-            jda.shutdownNow();
-        }
+        if (jda != null) jda.shutdownNow();
     }
 
     private Guild resolveGuild() {
         if (guildId != null && !guildId.isBlank() && !guildId.contains("YOUR_")) {
-            try {
-                return jda.getGuildById(guildId);
-            } catch (Exception ignored) {
-            }
+            try { return jda.getGuildById(guildId); } catch (Exception ignored) {}
         }
         return null;
     }
@@ -118,52 +112,50 @@ public class DiscordBot extends ListenerAdapter {
     public boolean stillHasAllowedRole(String discordId) {
         if (jda == null || discordId == null || discordId.isBlank()) return false;
         if (discordId.startsWith("admin-forced:")) return true;
-
         try {
             Guild guild = resolveGuild();
             if (guild == null) return false;
-
             Member member = guild.getMemberById(discordId);
             if (member == null) {
-                User user = jda.retrieveUserById(discordId).complete();
-                if (user != null) {
-                    member = guild.retrieveMember(user).complete();
-                }
+                var user = jda.retrieveUserById(discordId).complete();
+                if (user != null) member = guild.retrieveMember(user).complete();
             }
             if (member == null) return false;
-
-            if (allowedRoleIds.isEmpty()) {
-                return member.isBoosting();
-            }
+            if (allowedRoleIds.isEmpty()) return member.isBoosting();
             for (Role role : member.getRoles()) {
                 if (allowedRoleIds.contains(role.getId())) return true;
             }
             return false;
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to check role for Discord ID " + discordId + ": " + e.getMessage());
             return false;
         }
     }
 
-    private boolean isStaff(Member member) {
-        if (member == null) return false;
-        if (member.hasPermission(Permission.ADMINISTRATOR)) return true;
-        for (Role role : member.getRoles()) {
-            if (staffRoleIds.contains(role.getId())) return true;
-        }
-        return false;
+    private boolean isGuildOwner(String userId) {
+        String ownerId = plugin.getConfig().getString("owner-id", "");
+        return ownerId != null && ownerId.equals(userId);
+    }
+
+    private boolean isCoOwner(String userId) {
+        return plugin.getConfig().getStringList("co-owner-ids").contains(userId);
+    }
+
+    private boolean isOwnerOrCoOwner(String userId) {
+        return isGuildOwner(userId) || isCoOwner(userId);
+    }
+
+    private void saveConfigList(String key, List<String> list) {
+        plugin.getConfig().set(key, list);
+        plugin.saveConfig();
     }
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
-        String name = event.getName();
-
-        if (name.equals("verify")) {
-            handleVerify(event);
-        } else if (name.equals("ticket")) {
-            handleTicket(event);
-        } else if (name.equals("manual-link")) {
-            handleManualLink(event);
+        switch (event.getName()) {
+            case "verify" -> handleVerify(event);
+            case "management-owner" -> handleManagementOwner(event);
+            case "management-admin" -> handleManagementRoles(event, "staff-role-ids", "Staff roles");
+            case "management-owner-admin" -> handleManagementRoles(event, "bot-admin-role-ids", "Bot-admin roles");
         }
     }
 
@@ -172,13 +164,12 @@ public class DiscordBot extends ListenerAdapter {
 
         String code = event.getOption("code") != null ? event.getOption("code").getAsString().trim() : null;
         if (code == null || code.length() != 4) {
-            event.getHook().sendMessage("❌ Invalid code. Please provide a 4-digit code from Minecraft `/link`.").queue();
+            event.getHook().sendMessage("❌ Invalid code.").queue();
             return;
         }
 
         LinkManager manager = plugin.getLinkManager();
         LinkManager.PendingCode pending = manager.getPendingCode(code);
-
         if (pending == null) {
             event.getHook().sendMessage("❌ Code not found or expired. Run `/link` again in Minecraft.").queue();
             return;
@@ -189,38 +180,28 @@ public class DiscordBot extends ListenerAdapter {
             member = event.getGuild().retrieveMember(event.getUser()).complete();
         }
         if (member == null) {
-            event.getHook().sendMessage("❌ Could not retrieve your member information.").queue();
+            event.getHook().sendMessage("❌ Could not retrieve member info.").queue();
             return;
         }
 
-        boolean hasAllowedRole = false;
-        if (!allowedRoleIds.isEmpty()) {
-            for (Role role : member.getRoles()) {
-                if (allowedRoleIds.contains(role.getId())) {
-                    hasAllowedRole = true;
-                    break;
-                }
-            }
-        } else {
-            hasAllowedRole = member.isBoosting();
-        }
+        boolean hasRole = allowedRoleIds.isEmpty() ? member.isBoosting() :
+                member.getRoles().stream().anyMatch(r -> allowedRoleIds.contains(r.getId()));
 
-        if (!hasAllowedRole) {
-            event.getHook().sendMessage("❌ You do not have any of the required roles to verify and play on this server.").queue();
+        if (!hasRole) {
+            event.getHook().sendMessage("❌ You do not have any of the required roles.").queue();
             return;
         }
 
         UUID mcUuid = pending.playerUuid;
         String discordId = event.getUser().getId();
-
         manager.consumeCode(code);
         manager.linkAccount(mcUuid, discordId);
 
-        event.getHook().sendMessage("✅ Successfully linked! Your Minecraft account is now verified.").queue();
+        event.getHook().sendMessage("✅ Successfully linked!").queue();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             manager.setRestricted(mcUuid, false);
-            var player = Bukkit.getPlayer(mcUuid);
+            Player player = Bukkit.getPlayer(mcUuid);
             if (player != null && player.isOnline()) {
                 player.sendMessage("§a§lVerification successful! §aYou are now fully linked via Discord.");
             }
@@ -232,250 +213,150 @@ public class DiscordBot extends ListenerAdapter {
         }
     }
 
-    private void handleTicket(SlashCommandInteractionEvent event) {
-        String sub = event.getSubcommandName();
-        if (sub == null) return;
-
-        if (sub.equals("create")) {
-            event.deferReply(true).queue();
-            String reason = event.getOption("reason") != null ? event.getOption("reason").getAsString() : "No reason provided";
-            String creatorKey = event.getUser().getId();
-
-            TicketManager tickets = plugin.getTicketManager();
-            if (tickets.hasOpenTicket(creatorKey)) {
-                event.getHook().sendMessage("❌ You already have an open ticket.").queue();
-                return;
-            }
-
-            Guild guild = event.getGuild();
-            if (guild == null) {
-                event.getHook().sendMessage("❌ This command must be used in a server.").queue();
-                return;
-            }
-
-            createTicketChannel(guild, event.getUser(), creatorKey, event.getUser().getName(), reason, false)
-                    .thenAccept(channel -> {
-                        if (channel != null) {
-                            event.getHook().sendMessage("✅ Ticket created: " + channel.getAsMention()).queue();
-                        } else {
-                            event.getHook().sendMessage("❌ Failed to create ticket channel.").queue();
-                        }
-                    });
-        } else if (sub.equals("close")) {
-            event.deferReply(true).queue();
-            String creatorKey = event.getUser().getId();
-            TicketManager tickets = plugin.getTicketManager();
-            String channelId = tickets.getChannelForCreator(creatorKey);
-
-            // Staff can close any ticket if used inside the ticket channel
-            if (channelId == null && event.getChannel() != null) {
-                TicketManager.TicketInfo info = tickets.getTicket(event.getChannel().getId());
-                if (info != null && isStaff(event.getMember())) {
-                    channelId = event.getChannel().getId();
-                }
-            }
-
-            if (channelId == null) {
-                event.getHook().sendMessage("❌ You do not have an open ticket.").queue();
-                return;
-            }
-
-            closeTicket(channelId, event.getUser().getName());
-            event.getHook().sendMessage("✅ Ticket closed.").queue();
-        }
-    }
-
-    private void handleManualLink(SlashCommandInteractionEvent event) {
+    private void handleManagementOwner(SlashCommandInteractionEvent event) {
         event.deferReply(true).queue();
-
-        if (!isStaff(event.getMember())) {
-            event.getHook().sendMessage("❌ You need a staff role to use this command.").queue();
+        if (!isGuildOwner(event.getUser().getId())) {
+            event.getHook().sendMessage("❌ Only the configured guild owner can use this command.").queue();
             return;
         }
 
-        String mcName = event.getOption("minecraft") != null ? event.getOption("minecraft").getAsString().trim() : null;
-        User discordUser = event.getOption("discord") != null ? event.getOption("discord").getAsUser() : null;
+        String sub = event.getSubcommandName();
+        List<String> list = new ArrayList<>(plugin.getConfig().getStringList("co-owner-ids"));
 
-        if (mcName == null || discordUser == null) {
-            event.getHook().sendMessage("❌ Missing arguments.").queue();
-            return;
-        }
-
-        LinkManager manager = plugin.getLinkManager();
-        UUID mcUuid = manager.findMinecraftUuidByName(mcName);
-        if (mcUuid == null) {
-            // Try online exact
-            Player online = Bukkit.getPlayerExact(mcName);
-            if (online != null) mcUuid = online.getUniqueId();
-        }
-
-        if (mcUuid == null) {
-            event.getHook().sendMessage("❌ Could not find Minecraft player `" + mcName + "`. They may need to have joined the server at least once.").queue();
-            return;
-        }
-
-        final UUID finalUuid = mcUuid;
-        manager.linkAccount(finalUuid, discordUser.getId());
-
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            manager.setRestricted(finalUuid, false);
-            Player p = Bukkit.getPlayer(finalUuid);
-            if (p != null && p.isOnline()) {
-                p.sendMessage("§aYour account was manually linked by staff. You can now play freely.");
+        if ("list".equals(sub)) {
+            if (list.isEmpty()) {
+                event.getHook().sendMessage("No co-owners configured.").queue();
+            } else {
+                StringBuilder sb = new StringBuilder("**Co-owners:**\n");
+                for (String id : list) sb.append("- <@").append(id).append("> (`").append(id).append("`)\n");
+                event.getHook().sendMessage(sb.toString()).queue();
             }
-        });
+            return;
+        }
 
-        event.getHook().sendMessage("✅ Linked **" + mcName + "** to " + discordUser.getAsMention() + ".").queue();
+        var userOpt = event.getOption("user");
+        if (userOpt == null) {
+            event.getHook().sendMessage("❌ Missing user.").queue();
+            return;
+        }
+        String targetId = userOpt.getAsUser().getId();
 
-        if (plugin.getAuditLogger() != null) {
-            plugin.getAuditLogger().log("Manual Link (Discord)",
-                    "**Staff:** " + event.getUser().getAsTag()
-                            + "\n**Minecraft:** " + mcName + " (`" + finalUuid + "`)"
-                            + "\n**Discord:** " + discordUser.getAsMention());
+        if ("add".equals(sub)) {
+            if (list.contains(targetId)) {
+                event.getHook().sendMessage("Already a co-owner.").queue();
+                return;
+            }
+            list.add(targetId);
+            saveConfigList("co-owner-ids", list);
+            event.getHook().sendMessage("✅ Added <@" + targetId + "> as co-owner.").queue();
+            if (plugin.getAuditLogger() != null) {
+                plugin.getAuditLogger().log("Co-Owner Added", "**By:** " + event.getUser().getAsTag() + "\n**User:** <@" + targetId + ">");
+            }
+        } else if ("remove".equals(sub)) {
+            if (!list.remove(targetId)) {
+                event.getHook().sendMessage("Not a co-owner.").queue();
+                return;
+            }
+            saveConfigList("co-owner-ids", list);
+            event.getHook().sendMessage("✅ Removed <@" + targetId + "> from co-owners.").queue();
+            if (plugin.getAuditLogger() != null) {
+                plugin.getAuditLogger().log("Co-Owner Removed", "**By:** " + event.getUser().getAsTag() + "\n**User:** <@" + targetId + ">");
+            }
         }
     }
 
-    public void createTicketFromMinecraft(Player player, String reason) {
+    private void handleManagementRoles(SlashCommandInteractionEvent event, String configKey, String label) {
+        event.deferReply(true).queue();
+        if (!isOwnerOrCoOwner(event.getUser().getId())) {
+            event.getHook().sendMessage("❌ Only the guild owner or co-owners can use this command.").queue();
+            return;
+        }
+
+        String sub = event.getSubcommandName();
+        List<String> list = new ArrayList<>(plugin.getConfig().getStringList(configKey));
+
+        if ("list".equals(sub)) {
+            if (list.isEmpty()) {
+                event.getHook().sendMessage("No " + label.toLowerCase() + " configured.").queue();
+            } else {
+                StringBuilder sb = new StringBuilder("**" + label + ":**\n");
+                for (String id : list) sb.append("- <@&").append(id).append("> (`").append(id).append("`)\n");
+                event.getHook().sendMessage(sb.toString()).queue();
+            }
+            return;
+        }
+
+        var roleOpt = event.getOption("role");
+        if (roleOpt == null) {
+            event.getHook().sendMessage("❌ Missing role.").queue();
+            return;
+        }
+        String roleId = roleOpt.getAsRole().getId();
+
+        if ("add".equals(sub)) {
+            if (list.contains(roleId)) {
+                event.getHook().sendMessage("Role already in list.").queue();
+                return;
+            }
+            list.add(roleId);
+            saveConfigList(configKey, list);
+            event.getHook().sendMessage("✅ Added <@&" + roleId + "> to " + label.toLowerCase() + ".").queue();
+            if (plugin.getAuditLogger() != null) {
+                plugin.getAuditLogger().log(label + " Added", "**By:** " + event.getUser().getAsTag() + "\n**Role:** <@&" + roleId + ">");
+            }
+        } else if ("remove".equals(sub)) {
+            if (!list.remove(roleId)) {
+                event.getHook().sendMessage("Role not in list.").queue();
+                return;
+            }
+            saveConfigList(configKey, list);
+            event.getHook().sendMessage("✅ Removed <@&" + roleId + "> from " + label.toLowerCase() + ".").queue();
+            if (plugin.getAuditLogger() != null) {
+                plugin.getAuditLogger().log(label + " Removed", "**By:** " + event.getUser().getAsTag() + "\n**Role:** <@&" + roleId + ">");
+            }
+        }
+    }
+
+    /** Posts a support ticket embed to the configured ticket channel. */
+    public void sendTicketEmbed(Player player, String message) {
         if (jda == null) {
             Bukkit.getScheduler().runTask(plugin, () ->
                     player.sendMessage("§cDiscord bot is not available."));
             return;
         }
 
-        Guild guild = resolveGuild();
-        if (guild == null) {
+        String channelId = plugin.getConfig().getString("ticket-channel-id", "");
+        if (channelId == null || channelId.isBlank() || channelId.contains("DISCORD_")) {
             Bukkit.getScheduler().runTask(plugin, () ->
-                    player.sendMessage("§cDiscord guild is not configured."));
+                    player.sendMessage("§cTicket channel is not configured."));
             return;
         }
 
-        String key = player.getUniqueId().toString();
-        createTicketChannel(guild, null, key, player.getName(), reason, true)
-                .thenAccept(channel -> {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (channel != null) {
-                            player.sendMessage("§aSupport ticket created! Staff have been notified on Discord.");
-                        } else {
-                            player.sendMessage("§cFailed to create ticket. Please try again or contact staff.");
-                        }
-                    });
-                });
-    }
-
-    private CompletableFuture<TextChannel> createTicketChannel(Guild guild, User discordUser,
-                                                               String creatorKey, String creatorName,
-                                                               String reason, boolean fromMinecraft) {
-        CompletableFuture<TextChannel> future = new CompletableFuture<>();
-
-        String channelName = ("ticket-" + creatorName).toLowerCase()
-                .replaceAll("[^a-z0-9-]", "-")
-                .replaceAll("-+", "-");
-        if (channelName.length() > 90) channelName = channelName.substring(0, 90);
-
-        var action = guild.createTextChannel(channelName);
-
-        String categoryId = plugin.getConfig().getString("ticket-category-id", "");
-        if (categoryId != null && !categoryId.isBlank()) {
-            Category cat = guild.getCategoryById(categoryId);
-            if (cat != null) action = action.setParent(cat);
-        }
-
-        // Deny @everyone, allow staff roles + creator
-        action = action.addPermissionOverride(guild.getPublicRole(),
-                Collections.emptyList(),
-                EnumSet.of(Permission.VIEW_CHANNEL));
-
-        for (String roleId : staffRoleIds) {
-            Role role = guild.getRoleById(roleId);
-            if (role != null) {
-                action = action.addPermissionOverride(role,
-                        EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND, Permission.MESSAGE_HISTORY),
-                        Collections.emptyList());
-            }
-        }
-
-        if (discordUser != null) {
-            Member member = guild.getMember(discordUser);
-            if (member != null) {
-                action = action.addPermissionOverride(member,
-                        EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND, Permission.MESSAGE_HISTORY),
-                        Collections.emptyList());
-            }
-        }
-
-        String finalChannelName = channelName;
-        action.queue(channel -> {
-            plugin.getTicketManager().registerTicket(
-                    channel.getId(), creatorKey, creatorName, reason, fromMinecraft);
-
-            String source = fromMinecraft ? "Minecraft" : "Discord";
-            channel.sendMessage("**Support Ticket**\n"
-                    + "**Created by:** " + creatorName + " (" + source + ")\n"
-                    + "**Reason:** " + reason + "\n\n"
-                    + "Staff will assist you shortly. Use `/ticket close` to close this ticket.").queue();
-
-            if (plugin.getAuditLogger() != null) {
-                plugin.getAuditLogger().log("Ticket Created",
-                        "**Creator:** " + creatorName
-                                + "\n**Source:** " + source
-                                + "\n**Reason:** " + reason
-                                + "\n**Channel:** " + channel.getAsMention());
-            }
-
-            future.complete(channel);
-        }, err -> {
-            plugin.getLogger().warning("Failed to create ticket channel: " + err.getMessage());
-            future.complete(null);
-        });
-
-        return future;
-    }
-
-    public void closeTicket(String channelId, String closedBy) {
-        TicketManager.TicketInfo info = plugin.getTicketManager().closeTicket(channelId);
-        if (info == null) return;
-
-        if (jda == null) return;
         TextChannel channel = jda.getTextChannelById(channelId);
-        if (channel == null) return;
+        if (channel == null) {
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    player.sendMessage("§cCould not find the ticket channel."));
+            return;
+        }
 
-        // Build a simple transcript from recent messages
-        channel.getHistory().retrievePast(50).queue(messages -> {
-            StringBuilder transcript = new StringBuilder();
-            transcript.append("Ticket Transcript – ").append(info.creatorName).append("\n");
-            transcript.append("Reason: ").append(info.reason).append("\n");
-            transcript.append("Closed by: ").append(closedBy).append("\n\n");
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle("Support Ticket")
+                .setColor(Color.ORANGE)
+                .addField("Player", player.getName(), true)
+                .addField("UUID", player.getUniqueId().toString(), true)
+                .addField("Message", message, false)
+                .setTimestamp(java.time.Instant.now());
 
-            // Reverse to chronological
-            List<net.dv8tion.jda.api.entities.Message> reversed = new ArrayList<>(messages);
-            Collections.reverse(reversed);
-            for (var msg : reversed) {
-                transcript.append("[").append(msg.getTimeCreated()).append("] ")
-                        .append(msg.getAuthor().getName()).append(": ")
-                        .append(msg.getContentDisplay()).append("\n");
-            }
+        channel.sendMessageEmbeds(embed.build()).queue(
+                success -> Bukkit.getScheduler().runTask(plugin, () ->
+                        player.sendMessage("§aYour support ticket has been sent to staff!")),
+                err -> Bukkit.getScheduler().runTask(plugin, () ->
+                        player.sendMessage("§cFailed to send ticket. Please try again."))
+        );
 
-            String transcriptChannelId = plugin.getConfig().getString("ticket-transcript-channel-id", "");
-            if (transcriptChannelId != null && !transcriptChannelId.isBlank()) {
-                TextChannel logChannel = jda.getTextChannelById(transcriptChannelId);
-                if (logChannel != null) {
-                    String content = transcript.toString();
-                    if (content.length() > 1900) content = content.substring(0, 1900) + "\n...(truncated)";
-                    logChannel.sendMessage("```\n" + content + "\n```").queue();
-                }
-            }
-
-            if (plugin.getAuditLogger() != null) {
-                plugin.getAuditLogger().log("Ticket Closed",
-                        "**Creator:** " + info.creatorName
-                                + "\n**Closed by:** " + closedBy
-                                + "\n**Reason was:** " + info.reason);
-            }
-
-            channel.sendMessage("Ticket closed by **" + closedBy + "**. Channel will be deleted in 5 seconds.").queue();
-            channel.delete().queueAfter(5, java.util.concurrent.TimeUnit.SECONDS);
-        }, err -> {
-            channel.delete().queue();
-        });
+        if (plugin.getAuditLogger() != null) {
+            plugin.getAuditLogger().log("Ticket Submitted",
+                    "**Player:** " + player.getName() + " (`" + player.getUniqueId() + "`)\n**Message:** " + message);
+        }
     }
 }
