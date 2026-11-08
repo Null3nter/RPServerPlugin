@@ -13,16 +13,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LinkManager {
 
     private final RPServerPlugin plugin;
-    private final Map<String, PendingCode> pendingCodes = new ConcurrentHashMap<>(); // code -> PendingCode
-    private final Map<UUID, String> linkedAccounts = new ConcurrentHashMap<>(); // MC UUID -> Discord ID
+    private final Map<String, PendingCode> pendingCodes = new ConcurrentHashMap<>();
+    private final Map<UUID, String> linkedAccounts = new ConcurrentHashMap<>();
     private final Set<UUID> restrictedPlayers = ConcurrentHashMap.newKeySet();
-    private final Set<String> manualBypass = ConcurrentHashMap.newKeySet(); // lowercase username or UUID string
+    private final Set<String> manualBypass = ConcurrentHashMap.newKeySet();
 
-    // Plus-one system: booster UUID -> plus-one UUID
-    private final Map<UUID, UUID> plusOnes = new ConcurrentHashMap<>(); // booster -> guest
-    private final Map<UUID, UUID> plusOneOf = new ConcurrentHashMap<>(); // guest -> booster (reverse lookup)
-
-    // Cooldown: booster UUID -> last change timestamp (ms)
+    private final Map<UUID, UUID> plusOnes = new ConcurrentHashMap<>();
+    private final Map<UUID, UUID> plusOneOf = new ConcurrentHashMap<>();
     private final Map<UUID, Long> plusOneLastChange = new ConcurrentHashMap<>();
 
     private File linkedFile;
@@ -34,7 +31,6 @@ public class LinkManager {
     }
 
     public void load() {
-        // Load manual bypass from config
         List<String> bypassList = plugin.getConfig().getStringList("manual-bypass-players");
         manualBypass.clear();
         for (String entry : bypassList) {
@@ -43,7 +39,6 @@ public class LinkManager {
             }
         }
 
-        // Load linked accounts + plus-ones + cooldowns
         if (!linkedFile.exists()) {
             try {
                 linkedFile.getParentFile().mkdirs();
@@ -119,11 +114,58 @@ public class LinkManager {
         }
     }
 
+    public void saveBypassToConfig() {
+        List<String> list = new ArrayList<>(manualBypass);
+        plugin.getConfig().set("manual-bypass-players", list);
+        plugin.saveConfig();
+    }
+
     public boolean isBypassed(Player player) {
         if (player == null) return false;
         String uuidStr = player.getUniqueId().toString().toLowerCase(Locale.ROOT);
         String name = player.getName().toLowerCase(Locale.ROOT);
         return manualBypass.contains(uuidStr) || manualBypass.contains(name);
+    }
+
+    public boolean isBypassedEntry(String entry) {
+        if (entry == null) return false;
+        return manualBypass.contains(entry.trim().toLowerCase(Locale.ROOT));
+    }
+
+    public Set<String> getBypassList() {
+        return Collections.unmodifiableSet(manualBypass);
+    }
+
+    public boolean addBypass(String entry) {
+        if (entry == null || entry.isBlank()) return false;
+        String key = entry.trim().toLowerCase(Locale.ROOT);
+        boolean added = manualBypass.add(key);
+        if (added) {
+            saveBypassToConfig();
+            // Unrestrict if online
+            Player p = Bukkit.getPlayerExact(entry.trim());
+            if (p == null) {
+                try {
+                    UUID u = UUID.fromString(entry.trim());
+                    p = Bukkit.getPlayer(u);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            if (p != null) {
+                setRestricted(p.getUniqueId(), false);
+            }
+        }
+        return added;
+    }
+
+    public boolean removeBypass(String entry) {
+        if (entry == null || entry.isBlank()) return false;
+        String key = entry.trim().toLowerCase(Locale.ROOT);
+        boolean removed = manualBypass.remove(key);
+        if (removed) {
+            saveBypassToConfig();
+        }
+        return removed;
     }
 
     public boolean isLinked(UUID uuid) {
@@ -185,6 +227,18 @@ public class LinkManager {
         return linkedAccounts.get(uuid);
     }
 
+    public UUID findMinecraftUuidByName(String name) {
+        Player online = Bukkit.getPlayerExact(name);
+        if (online != null) return online.getUniqueId();
+        // Search offline
+        for (var off : Bukkit.getOfflinePlayers()) {
+            if (off.getName() != null && off.getName().equalsIgnoreCase(name)) {
+                return off.getUniqueId();
+            }
+        }
+        return null;
+    }
+
     // ===== Plus-One System =====
 
     public boolean hasPlusOne(UUID booster) {
@@ -203,36 +257,26 @@ public class LinkManager {
         return plusOneOf.containsKey(guest);
     }
 
-    /**
-     * Returns remaining cooldown seconds, or 0 if ready.
-     */
     public long getPlusOneCooldownRemaining(UUID booster) {
         Long last = plusOneLastChange.get(booster);
         if (last == null) return 0;
-
         int cooldownSec = plugin.getConfig().getInt("plusone-cooldown-seconds", 3600);
         long elapsed = (System.currentTimeMillis() - last) / 1000L;
-        long remaining = cooldownSec - elapsed;
-        return Math.max(0, remaining);
+        return Math.max(0, cooldownSec - elapsed);
     }
 
     private void markPlusOneChanged(UUID booster) {
         plusOneLastChange.put(booster, System.currentTimeMillis());
     }
 
-    /**
-     * Assign a plus-one. Returns null on success, or an error message.
-     */
     public String setPlusOne(UUID booster, UUID guest) {
         if (!isLinked(booster)) {
             return "You must be a verified linked player to invite a plus-one.";
         }
-
         long remaining = getPlusOneCooldownRemaining(booster);
         if (remaining > 0) {
             return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
         }
-
         if (isLinked(guest)) {
             return "That player is already fully linked and does not need a plus-one slot.";
         }
@@ -245,12 +289,11 @@ public class LinkManager {
         if (booster.equals(guest)) {
             return "You cannot invite yourself.";
         }
-
         plusOnes.put(booster, guest);
         plusOneOf.put(guest, booster);
         markPlusOneChanged(booster);
         save();
-        return null; // success
+        return null;
     }
 
     public String removePlusOne(UUID booster) {
@@ -258,7 +301,6 @@ public class LinkManager {
         if (remaining > 0) {
             return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
         }
-
         UUID guest = plusOnes.remove(booster);
         if (guest != null) {
             plusOneOf.remove(guest);
@@ -269,7 +311,7 @@ public class LinkManager {
             }
             markPlusOneChanged(booster);
             save();
-            return null; // success
+            return null;
         }
         return "You do not have a plus-one to remove.";
     }
@@ -298,26 +340,19 @@ public class LinkManager {
                 + (mins > 0 ? " and " + mins + " minute" + (mins == 1 ? "" : "s") : "");
     }
 
-    /**
-     * Called periodically: if a plus-one's booster is no longer valid, revoke access.
-     * Note: automatic revocation does NOT trigger the cooldown (only manual changes do).
-     */
     public void validatePlusOnes(DiscordBot bot) {
         List<UUID> toRemove = new ArrayList<>();
         for (Map.Entry<UUID, UUID> entry : plusOnes.entrySet()) {
             UUID booster = entry.getKey();
-
             String discordId = linkedAccounts.get(booster);
             if (discordId == null || discordId.startsWith("admin-forced:")) {
                 toRemove.add(booster);
                 continue;
             }
-
             if (bot != null && !bot.stillHasAllowedRole(discordId)) {
                 toRemove.add(booster);
             }
         }
-
         for (UUID booster : toRemove) {
             UUID guest = plusOnes.remove(booster);
             if (guest != null) {
@@ -327,13 +362,10 @@ public class LinkManager {
                 if (guestPlayer != null && guestPlayer.isOnline()) {
                     guestPlayer.sendMessage("§cYour plus-one access has been revoked because the booster no longer has the required role.");
                 }
-                // Do NOT mark cooldown for automatic revocation
                 plugin.getLogger().info("Revoked plus-one of " + booster + " (guest " + guest + ") because booster no longer has an allowed role.");
             }
         }
-        if (!toRemove.isEmpty()) {
-            save();
-        }
+        if (!toRemove.isEmpty()) save();
     }
 
     public static class PendingCode {
