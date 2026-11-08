@@ -3,16 +3,20 @@ version: ${project.version}
 main: com.rpserver.plugin.RPServerPlugin
 api-version: '1.21'
 author: Null3nter
-description: Discord linking + booster verification + chat sync for RP servers
+description: Discord linking + role verification + chat sync for RP servers
 commands:
   link:
     description: Generate a temporary code to link your Minecraft account with Discord
     usage: /link
     permission: rpserver.link
+  forceverify:
+    description: Manually verify a player (admin only)
+    usage: /forceverify <player>
+    permission: rpserver.admin
 permissions:
   rpserver.link:
     description: Allows using the /link command
     default: true
   rpserver.admin:
-    description: Admin permission (bypass etc.)
+    description: Allows force-verifying players and other admin actions
     default: op
