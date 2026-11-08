@@ -21,8 +21,9 @@ public final class RPServerPlugin extends JavaPlugin {
         this.linkManager = new LinkManager(this);
         this.linkManager.load();
 
-        // Register command
+        // Register commands
         getCommand("link").setExecutor(new LinkCommand(this));
+        getCommand("forceverify").setExecutor(new ForceVerifyCommand(this));
 
         // Register events
         this.playerListener = new PlayerListener(this);
