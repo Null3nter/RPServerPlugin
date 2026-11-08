@@ -33,23 +33,19 @@ public class PlayerListener implements Listener {
         UUID uuid = player.getUniqueId();
         LinkManager manager = plugin.getLinkManager();
 
-        // Manual bypass takes priority
         if (manager.isBypassed(player)) {
             manager.setRestricted(uuid, false);
             player.sendMessage("§aYou have a manual bypass. Enjoy the server!");
             return;
         }
 
-        // Already fully linked
         if (manager.isLinked(uuid)) {
             manager.setRestricted(uuid, false);
             return;
         }
 
-        // Check if this player is a valid plus-one of someone
         if (manager.isPlusOne(uuid)) {
             UUID booster = manager.getBoosterOf(uuid);
-            // We will re-validate periodically; for now grant access
             manager.setRestricted(uuid, false);
             String boosterName = booster != null ? org.bukkit.Bukkit.getOfflinePlayer(booster).getName() : "someone";
             player.sendMessage("§aYou are playing as a plus-one of §e" + boosterName + "§a.");
@@ -57,14 +53,12 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        // Restrict the player
         manager.setRestricted(uuid, true);
         String msg = plugin.getConfig().getString("restriction-message",
                 "&cYou must link your Discord account to play. Use &e/link &cthen verify in Discord with the code.")
                 .replace('&', '§');
         player.sendMessage(msg);
 
-        // Keep reminding them periodically while restricted
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -74,13 +68,12 @@ public class PlayerListener implements Listener {
                 }
                 player.sendMessage(msg);
             }
-        }.runTaskTimer(plugin, 20L * 30, 20L * 60); // every 60s after first 30s
+        }.runTaskTimer(plugin, 20L * 30, 20L * 60);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
         if (plugin.getLinkManager().isRestricted(event.getPlayer().getUniqueId())) {
-            // Allow looking around but not moving position
             if (event.getFrom().getX() != event.getTo().getX()
                     || event.getFrom().getY() != event.getTo().getY()
                     || event.getFrom().getZ() != event.getTo().getZ()) {
@@ -128,15 +121,13 @@ public class PlayerListener implements Listener {
     public void onCommand(PlayerCommandPreprocessEvent event) {
         if (plugin.getLinkManager().isRestricted(event.getPlayer().getUniqueId())) {
             String msg = event.getMessage().toLowerCase();
-            // Allow /link and also /plusone (for when someone is inviting them while restricted is not the case, but safe)
-            if (!msg.startsWith("/link") && !msg.startsWith("/plusone")) {
+            if (!msg.startsWith("/link") && !msg.startsWith("/plusone") && !msg.startsWith("/ticket")) {
                 event.setCancelled(true);
-                event.getPlayer().sendMessage("§cYou can only use §e/link §cwhile restricted.");
+                event.getPlayer().sendMessage("§cYou can only use §e/link §cand §e/ticket §cwhile restricted.");
             }
         }
     }
 
-    // Live chat synchronization to Discord webhook
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onChat(AsyncPlayerChatEvent event) {
         String webhookUrl = plugin.getConfig().getString("chat-webhook-url", "");
@@ -147,7 +138,6 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         String content = "**" + player.getName() + "**: " + event.getMessage();
 
-        // Escape for JSON
         content = content
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
