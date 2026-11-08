@@ -107,6 +107,7 @@ restriction-message: "&cYou must link your Discord account..."
 - Added configurable cooldown after adding/removing a plus-one (`plusone-cooldown-seconds`)
 - Cooldown is persisted and survives restarts
 - Automatic role-loss revocation does not start the cooldown
+- Full feature log included in every GitHub Release
 
 ### 1.2.0
 - Full Plus-One system (`/plusone`)
