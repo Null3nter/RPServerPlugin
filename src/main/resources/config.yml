@@ -7,8 +7,14 @@ bot-token: "YOUR_DISCORD_BOT_TOKEN"
 # Your Discord Server (Guild) ID
 guild-id: "YOUR_DISCORD_SERVER_ID"
 
-# Role ID that identifies Server Boosters
-booster-role-id: "YOUR_BOOSTER_ROLE_ID"
+# List of Discord Role IDs that are allowed to verify / join
+# Players must have at least ONE of these roles to successfully /verify
+# Example:
+# allowed-role-ids:
+#   - "123456789012345678"   # Server Booster
+#   - "987654321098765432"   # VIP
+#   - "111222333444555666"   # Staff
+allowed-role-ids: []
 
 # Discord Webhook URL for in-game chat synchronization
 chat-webhook-url: "YOUR_DISCORD_WEBHOOK_URL"
