@@ -22,6 +22,9 @@ public class LinkManager {
     private final Map<UUID, UUID> plusOnes = new ConcurrentHashMap<>(); // booster -> guest
     private final Map<UUID, UUID> plusOneOf = new ConcurrentHashMap<>(); // guest -> booster (reverse lookup)
 
+    // Cooldown: booster UUID -> last change timestamp (ms)
+    private final Map<UUID, Long> plusOneLastChange = new ConcurrentHashMap<>();
+
     private File linkedFile;
     private FileConfiguration linkedConfig;
 
@@ -40,7 +43,7 @@ public class LinkManager {
             }
         }
 
-        // Load linked accounts + plus-ones
+        // Load linked accounts + plus-ones + cooldowns
         if (!linkedFile.exists()) {
             try {
                 linkedFile.getParentFile().mkdirs();
@@ -82,6 +85,18 @@ public class LinkManager {
             }
         }
 
+        plusOneLastChange.clear();
+        if (linkedConfig.isConfigurationSection("plusone-cooldowns")) {
+            for (String uuidStr : linkedConfig.getConfigurationSection("plusone-cooldowns").getKeys(false)) {
+                try {
+                    UUID uuid = UUID.fromString(uuidStr);
+                    long ts = linkedConfig.getLong("plusone-cooldowns." + uuidStr);
+                    plusOneLastChange.put(uuid, ts);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+
         plugin.getLogger().info("Loaded " + linkedAccounts.size() + " linked accounts, "
                 + plusOnes.size() + " plus-ones and " + manualBypass.size() + " manual bypass entries.");
     }
@@ -94,6 +109,9 @@ public class LinkManager {
         for (Map.Entry<UUID, UUID> entry : plusOnes.entrySet()) {
             linkedConfig.set("plusones." + entry.getKey().toString(), entry.getValue().toString());
         }
+        for (Map.Entry<UUID, Long> entry : plusOneLastChange.entrySet()) {
+            linkedConfig.set("plusone-cooldowns." + entry.getKey().toString(), entry.getValue());
+        }
         try {
             linkedConfig.save(linkedFile);
         } catch (IOException e) {
@@ -102,6 +120,7 @@ public class LinkManager {
     }
 
     public boolean isBypassed(Player player) {
+        if (player == null) return false;
         String uuidStr = player.getUniqueId().toString().toLowerCase(Locale.ROOT);
         String name = player.getName().toLowerCase(Locale.ROOT);
         return manualBypass.contains(uuidStr) || manualBypass.contains(name);
@@ -185,16 +204,35 @@ public class LinkManager {
     }
 
     /**
+     * Returns remaining cooldown seconds, or 0 if ready.
+     */
+    public long getPlusOneCooldownRemaining(UUID booster) {
+        Long last = plusOneLastChange.get(booster);
+        if (last == null) return 0;
+
+        int cooldownSec = plugin.getConfig().getInt("plusone-cooldown-seconds", 3600);
+        long elapsed = (System.currentTimeMillis() - last) / 1000L;
+        long remaining = cooldownSec - elapsed;
+        return Math.max(0, remaining);
+    }
+
+    private void markPlusOneChanged(UUID booster) {
+        plusOneLastChange.put(booster, System.currentTimeMillis());
+    }
+
+    /**
      * Assign a plus-one. Returns null on success, or an error message.
      */
     public String setPlusOne(UUID booster, UUID guest) {
         if (!isLinked(booster)) {
             return "You must be a verified linked player to invite a plus-one.";
         }
-        if (isLinked(guest) || isBypassed(Bukkit.getOfflinePlayer(guest).getPlayer() != null
-                ? Bukkit.getOfflinePlayer(guest).getPlayer() : null)) {
-            // Note: isBypassed needs online player; we just check linked for safety
+
+        long remaining = getPlusOneCooldownRemaining(booster);
+        if (remaining > 0) {
+            return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
         }
+
         if (isLinked(guest)) {
             return "That player is already fully linked and does not need a plus-one slot.";
         }
@@ -210,22 +248,30 @@ public class LinkManager {
 
         plusOnes.put(booster, guest);
         plusOneOf.put(guest, booster);
+        markPlusOneChanged(booster);
         save();
         return null; // success
     }
 
-    public void removePlusOne(UUID booster) {
+    public String removePlusOne(UUID booster) {
+        long remaining = getPlusOneCooldownRemaining(booster);
+        if (remaining > 0) {
+            return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
+        }
+
         UUID guest = plusOnes.remove(booster);
         if (guest != null) {
             plusOneOf.remove(guest);
-            // Restrict the guest again if they are online and not otherwise allowed
             setRestricted(guest, true);
             Player guestPlayer = Bukkit.getPlayer(guest);
             if (guestPlayer != null && guestPlayer.isOnline()) {
                 guestPlayer.sendMessage("§cYour plus-one access has been revoked by the booster.");
             }
+            markPlusOneChanged(booster);
             save();
+            return null; // success
         }
+        return "You do not have a plus-one to remove.";
     }
 
     public void removePlusOneByGuest(UUID guest) {
@@ -233,37 +279,60 @@ public class LinkManager {
         if (booster != null) {
             plusOnes.remove(booster);
             setRestricted(guest, true);
+            markPlusOneChanged(booster);
             save();
         }
     }
 
+    private String formatDuration(long seconds) {
+        if (seconds < 60) return seconds + " seconds";
+        long minutes = seconds / 60;
+        long secs = seconds % 60;
+        if (minutes < 60) {
+            return minutes + " minute" + (minutes == 1 ? "" : "s")
+                    + (secs > 0 ? " and " + secs + " second" + (secs == 1 ? "" : "s") : "");
+        }
+        long hours = minutes / 60;
+        long mins = minutes % 60;
+        return hours + " hour" + (hours == 1 ? "" : "s")
+                + (mins > 0 ? " and " + mins + " minute" + (mins == 1 ? "" : "s") : "");
+    }
+
     /**
-     * Called periodically or on join: if a plus-one's booster is no longer valid,
-     * revoke access.
+     * Called periodically: if a plus-one's booster is no longer valid, revoke access.
+     * Note: automatic revocation does NOT trigger the cooldown (only manual changes do).
      */
     public void validatePlusOnes(DiscordBot bot) {
         List<UUID> toRemove = new ArrayList<>();
         for (Map.Entry<UUID, UUID> entry : plusOnes.entrySet()) {
             UUID booster = entry.getKey();
-            UUID guest = entry.getValue();
 
             String discordId = linkedAccounts.get(booster);
             if (discordId == null || discordId.startsWith("admin-forced:")) {
-                // Booster is no longer properly linked → revoke
                 toRemove.add(booster);
                 continue;
             }
 
-            // Ask DiscordBot whether this Discord user still has an allowed role
             if (bot != null && !bot.stillHasAllowedRole(discordId)) {
                 toRemove.add(booster);
             }
         }
 
         for (UUID booster : toRemove) {
-            UUID guest = plusOnes.get(booster);
-            removePlusOne(booster);
-            plugin.getLogger().info("Revoked plus-one of " + booster + " (guest " + guest + ") because booster no longer has an allowed role.");
+            UUID guest = plusOnes.remove(booster);
+            if (guest != null) {
+                plusOneOf.remove(guest);
+                setRestricted(guest, true);
+                Player guestPlayer = Bukkit.getPlayer(guest);
+                if (guestPlayer != null && guestPlayer.isOnline()) {
+                    guestPlayer.sendMessage("§cYour plus-one access has been revoked because the booster no longer has the required role.");
+                }
+                // Do NOT mark cooldown for automatic revocation
+                plugin.getLogger().info("Revoked plus-one of " + booster + " (guest " + guest + ") because booster no longer has an allowed role.");
+            }
+        }
+        if (!toRemove.isEmpty()) {
+            save();
         }
     }
 
