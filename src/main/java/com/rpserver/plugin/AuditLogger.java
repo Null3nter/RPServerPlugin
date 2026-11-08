@@ -19,7 +19,7 @@ public class AuditLogger {
     }
 
     public void log(String title, String description) {
-        String webhook = plugin.getConfig().getString("audit-webhook-url", "");
+        String webhook = plugin.getConfig().getString("audit-log-webhook-url", "");
         if (webhook == null || webhook.isBlank() || webhook.contains("YOUR_")) {
             return;
         }
