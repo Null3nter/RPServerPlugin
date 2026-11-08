@@ -30,8 +30,6 @@ public class ForceVerifyCommand implements CommandExecutor {
 
         Player target = Bukkit.getPlayer(args[0]);
         if (target == null) {
-            // Try offline UUID lookup is limited; just tell them the player must be online for simplicity
-            // or we can still mark by name if we resolve later. For now require online.
             sender.sendMessage("§cPlayer must be online to force-verify.");
             return true;
         }
@@ -44,12 +42,17 @@ public class ForceVerifyCommand implements CommandExecutor {
             return true;
         }
 
-        // Manually link with a special marker so we know it was admin-forced
         manager.linkAccount(uuid, "admin-forced:" + sender.getName());
         manager.setRestricted(uuid, false);
 
         sender.sendMessage("§aSuccessfully force-verified §e" + target.getName() + "§a.");
         target.sendMessage("§a§lAn admin has manually verified your account. You can now play freely!");
+
+        if (plugin.getAuditLogger() != null) {
+            plugin.getAuditLogger().log("Force Verify",
+                    "**Admin:** " + sender.getName()
+                            + "\n**Player:** " + target.getName() + " (`" + uuid + "`)");
+        }
 
         return true;
     }
