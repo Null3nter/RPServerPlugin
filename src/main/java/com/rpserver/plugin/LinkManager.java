@@ -1,6 +1,7 @@
 package com.rpserver.plugin;
 
 import org.bukkit.Bukkit;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -17,6 +18,7 @@ public class LinkManager {
     private final Map<UUID, String> linkedAccounts = new ConcurrentHashMap<>();
     private final Set<UUID> restrictedPlayers = ConcurrentHashMap.newKeySet();
     private final Set<String> manualBypass = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, String> staffLinks = new ConcurrentHashMap<>(); // UUID -> Discord ID
 
     private final Map<UUID, UUID> plusOnes = new ConcurrentHashMap<>();
     private final Map<UUID, UUID> plusOneOf = new ConcurrentHashMap<>();
@@ -39,6 +41,22 @@ public class LinkManager {
             }
         }
 
+        staffLinks.clear();
+        ConfigurationSection staffSec = plugin.getConfig().getConfigurationSection("manual-staff-link-list");
+        if (staffSec != null) {
+            for (String key : staffSec.getKeys(false)) {
+                try {
+                    UUID uuid = UUID.fromString(key);
+                    String discordId = staffSec.getString(key);
+                    if (discordId != null) {
+                        staffLinks.put(uuid, discordId);
+                        linkedAccounts.put(uuid, discordId);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+
         if (!linkedFile.exists()) {
             try {
                 linkedFile.getParentFile().mkdirs();
@@ -49,7 +67,6 @@ public class LinkManager {
         }
         linkedConfig = YamlConfiguration.loadConfiguration(linkedFile);
 
-        linkedAccounts.clear();
         if (linkedConfig.isConfigurationSection("linked")) {
             for (String uuidStr : linkedConfig.getConfigurationSection("linked").getKeys(false)) {
                 try {
@@ -93,7 +110,8 @@ public class LinkManager {
         }
 
         plugin.getLogger().info("Loaded " + linkedAccounts.size() + " linked accounts, "
-                + plusOnes.size() + " plus-ones and " + manualBypass.size() + " manual bypass entries.");
+                + plusOnes.size() + " plus-ones, " + staffLinks.size() + " staff links, "
+                + manualBypass.size() + " bypass entries.");
     }
 
     public void save() {
@@ -115,21 +133,28 @@ public class LinkManager {
     }
 
     public void saveBypassToConfig() {
-        List<String> list = new ArrayList<>(manualBypass);
-        plugin.getConfig().set("manual-bypass-players", list);
+        plugin.getConfig().set("manual-bypass-players", new ArrayList<>(manualBypass));
         plugin.saveConfig();
+    }
+
+    public void addStaffLink(UUID uuid, String discordId) {
+        staffLinks.put(uuid, discordId);
+        // Persist into config
+        plugin.getConfig().set("manual-staff-link-list." + uuid.toString(), discordId);
+        plugin.saveConfig();
+        save();
+    }
+
+    public boolean isStaffLinked(UUID uuid) {
+        return staffLinks.containsKey(uuid);
     }
 
     public boolean isBypassed(Player player) {
         if (player == null) return false;
         String uuidStr = player.getUniqueId().toString().toLowerCase(Locale.ROOT);
         String name = player.getName().toLowerCase(Locale.ROOT);
-        return manualBypass.contains(uuidStr) || manualBypass.contains(name);
-    }
-
-    public boolean isBypassedEntry(String entry) {
-        if (entry == null) return false;
-        return manualBypass.contains(entry.trim().toLowerCase(Locale.ROOT));
+        return manualBypass.contains(uuidStr) || manualBypass.contains(name)
+                || staffLinks.containsKey(player.getUniqueId());
     }
 
     public Set<String> getBypassList() {
@@ -142,18 +167,14 @@ public class LinkManager {
         boolean added = manualBypass.add(key);
         if (added) {
             saveBypassToConfig();
-            // Unrestrict if online
             Player p = Bukkit.getPlayerExact(entry.trim());
             if (p == null) {
                 try {
-                    UUID u = UUID.fromString(entry.trim());
-                    p = Bukkit.getPlayer(u);
+                    p = Bukkit.getPlayer(UUID.fromString(entry.trim()));
                 } catch (IllegalArgumentException ignored) {
                 }
             }
-            if (p != null) {
-                setRestricted(p.getUniqueId(), false);
-            }
+            if (p != null) setRestricted(p.getUniqueId(), false);
         }
         return added;
     }
@@ -162,9 +183,7 @@ public class LinkManager {
         if (entry == null || entry.isBlank()) return false;
         String key = entry.trim().toLowerCase(Locale.ROOT);
         boolean removed = manualBypass.remove(key);
-        if (removed) {
-            saveBypassToConfig();
-        }
+        if (removed) saveBypassToConfig();
         return removed;
     }
 
@@ -177,22 +196,17 @@ public class LinkManager {
     }
 
     public void setRestricted(UUID uuid, boolean restricted) {
-        if (restricted) {
-            restrictedPlayers.add(uuid);
-        } else {
-            restrictedPlayers.remove(uuid);
-        }
+        if (restricted) restrictedPlayers.add(uuid);
+        else restrictedPlayers.remove(uuid);
     }
 
     public String generateCode(UUID playerUuid) {
         long now = System.currentTimeMillis();
         pendingCodes.entrySet().removeIf(e -> e.getValue().expiresAt < now);
-
         String code;
         do {
             code = String.format("%04d", new Random().nextInt(10000));
         } while (pendingCodes.containsKey(code));
-
         int expirySeconds = plugin.getConfig().getInt("code-expiry-seconds", 300);
         pendingCodes.put(code, new PendingCode(playerUuid, now + (expirySeconds * 1000L)));
         return code;
@@ -216,7 +230,6 @@ public class LinkManager {
         linkedAccounts.put(minecraftUuid, discordId);
         setRestricted(minecraftUuid, false);
         save();
-
         Player player = Bukkit.getPlayer(minecraftUuid);
         if (player != null && player.isOnline()) {
             player.sendMessage("§aYour account has been successfully linked to Discord! You can now play freely.");
@@ -230,7 +243,6 @@ public class LinkManager {
     public UUID findMinecraftUuidByName(String name) {
         Player online = Bukkit.getPlayerExact(name);
         if (online != null) return online.getUniqueId();
-        // Search offline
         for (var off : Bukkit.getOfflinePlayers()) {
             if (off.getName() != null && off.getName().equalsIgnoreCase(name)) {
                 return off.getUniqueId();
@@ -239,30 +251,16 @@ public class LinkManager {
         return null;
     }
 
-    // ===== Plus-One System =====
-
-    public boolean hasPlusOne(UUID booster) {
-        return plusOnes.containsKey(booster);
-    }
-
-    public UUID getPlusOne(UUID booster) {
-        return plusOnes.get(booster);
-    }
-
-    public UUID getBoosterOf(UUID guest) {
-        return plusOneOf.get(guest);
-    }
-
-    public boolean isPlusOne(UUID guest) {
-        return plusOneOf.containsKey(guest);
-    }
+    public boolean hasPlusOne(UUID booster) { return plusOnes.containsKey(booster); }
+    public UUID getPlusOne(UUID booster) { return plusOnes.get(booster); }
+    public UUID getBoosterOf(UUID guest) { return plusOneOf.get(guest); }
+    public boolean isPlusOne(UUID guest) { return plusOneOf.containsKey(guest); }
 
     public long getPlusOneCooldownRemaining(UUID booster) {
         Long last = plusOneLastChange.get(booster);
         if (last == null) return 0;
         int cooldownSec = plugin.getConfig().getInt("plusone-cooldown-seconds", 3600);
-        long elapsed = (System.currentTimeMillis() - last) / 1000L;
-        return Math.max(0, cooldownSec - elapsed);
+        return Math.max(0, cooldownSec - ((System.currentTimeMillis() - last) / 1000L));
     }
 
     private void markPlusOneChanged(UUID booster) {
@@ -270,25 +268,13 @@ public class LinkManager {
     }
 
     public String setPlusOne(UUID booster, UUID guest) {
-        if (!isLinked(booster)) {
-            return "You must be a verified linked player to invite a plus-one.";
-        }
+        if (!isLinked(booster)) return "You must be a verified linked player to invite a plus-one.";
         long remaining = getPlusOneCooldownRemaining(booster);
-        if (remaining > 0) {
-            return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
-        }
-        if (isLinked(guest)) {
-            return "That player is already fully linked and does not need a plus-one slot.";
-        }
-        if (plusOnes.containsKey(booster)) {
-            return "You already have a plus-one. Use /plusone remove first.";
-        }
-        if (plusOneOf.containsKey(guest)) {
-            return "That player is already someone else's plus-one.";
-        }
-        if (booster.equals(guest)) {
-            return "You cannot invite yourself.";
-        }
+        if (remaining > 0) return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
+        if (isLinked(guest)) return "That player is already fully linked and does not need a plus-one slot.";
+        if (plusOnes.containsKey(booster)) return "You already have a plus-one. Use /plusone remove first.";
+        if (plusOneOf.containsKey(guest)) return "That player is already someone else's plus-one.";
+        if (booster.equals(guest)) return "You cannot invite yourself.";
         plusOnes.put(booster, guest);
         plusOneOf.put(guest, booster);
         markPlusOneChanged(booster);
@@ -298,9 +284,7 @@ public class LinkManager {
 
     public String removePlusOne(UUID booster) {
         long remaining = getPlusOneCooldownRemaining(booster);
-        if (remaining > 0) {
-            return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
-        }
+        if (remaining > 0) return "You must wait " + formatDuration(remaining) + " before changing your plus-one again.";
         UUID guest = plusOnes.remove(booster);
         if (guest != null) {
             plusOneOf.remove(guest);
@@ -314,16 +298,6 @@ public class LinkManager {
             return null;
         }
         return "You do not have a plus-one to remove.";
-    }
-
-    public void removePlusOneByGuest(UUID guest) {
-        UUID booster = plusOneOf.remove(guest);
-        if (booster != null) {
-            plusOnes.remove(booster);
-            setRestricted(guest, true);
-            markPlusOneChanged(booster);
-            save();
-        }
     }
 
     private String formatDuration(long seconds) {
@@ -342,8 +316,7 @@ public class LinkManager {
 
     public void validatePlusOnes(DiscordBot bot) {
         List<UUID> toRemove = new ArrayList<>();
-        for (Map.Entry<UUID, UUID> entry : plusOnes.entrySet()) {
-            UUID booster = entry.getKey();
+        for (UUID booster : plusOnes.keySet()) {
             String discordId = linkedAccounts.get(booster);
             if (discordId == null || discordId.startsWith("admin-forced:")) {
                 toRemove.add(booster);
@@ -362,7 +335,6 @@ public class LinkManager {
                 if (guestPlayer != null && guestPlayer.isOnline()) {
                     guestPlayer.sendMessage("§cYour plus-one access has been revoked because the booster no longer has the required role.");
                 }
-                plugin.getLogger().info("Revoked plus-one of " + booster + " (guest " + guest + ") because booster no longer has an allowed role.");
             }
         }
         if (!toRemove.isEmpty()) save();
@@ -371,7 +343,6 @@ public class LinkManager {
     public static class PendingCode {
         public final UUID playerUuid;
         public final long expiresAt;
-
         public PendingCode(UUID playerUuid, long expiresAt) {
             this.playerUuid = playerUuid;
             this.expiresAt = expiresAt;
