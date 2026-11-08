@@ -29,5 +29,9 @@ manual-bypass-players: []
 # How long (in seconds) a generated link code remains valid
 code-expiry-seconds: 300
 
+# Cooldown (in seconds) after adding or removing a plus-one before you can change it again
+# Default: 3600 = 1 hour
+plusone-cooldown-seconds: 3600
+
 # Message shown to restricted (unlinked) players
 restriction-message: "&cYou must link your Discord account to play. Use &e/link &cthen verify in Discord with the code."
