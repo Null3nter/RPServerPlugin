@@ -24,6 +24,7 @@ public final class RPServerPlugin extends JavaPlugin {
         // Register commands
         getCommand("link").setExecutor(new LinkCommand(this));
         getCommand("forceverify").setExecutor(new ForceVerifyCommand(this));
+        getCommand("plusone").setExecutor(new PlusOneCommand(this));
 
         // Register events
         this.playerListener = new PlayerListener(this);
@@ -40,6 +41,13 @@ public final class RPServerPlugin extends JavaPlugin {
                 e.printStackTrace();
             }
         });
+
+        // Periodically validate that plus-ones still have a valid booster (every 5 minutes)
+        Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
+            if (discordBot != null && linkManager != null) {
+                linkManager.validatePlusOnes(discordBot);
+            }
+        }, 20L * 60 * 2, 20L * 60 * 5); // first after 2 min, then every 5 min
 
         getLogger().info("RPServerPlugin enabled!");
     }
