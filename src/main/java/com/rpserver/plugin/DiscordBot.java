@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
+import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
@@ -86,6 +87,47 @@ public class DiscordBot extends ListenerAdapter {
     public void shutdown() {
         if (jda != null) {
             jda.shutdownNow();
+        }
+    }
+
+    /**
+     * Returns true if the given Discord user ID still has at least one of the allowed roles
+     * in the configured guild. Used by the plus-one system.
+     */
+    public boolean stillHasAllowedRole(String discordId) {
+        if (jda == null || discordId == null || discordId.isBlank()) return false;
+        if (discordId.startsWith("admin-forced:")) return true; // treat admin-forced as always valid
+
+        try {
+            Guild guild = null;
+            if (guildId != null && !guildId.isBlank()) {
+                guild = jda.getGuildById(guildId);
+            }
+            if (guild == null) return false;
+
+            Member member = guild.getMemberById(discordId);
+            if (member == null) {
+                // Try retrieving
+                User user = jda.retrieveUserById(discordId).complete();
+                if (user != null) {
+                    member = guild.retrieveMember(user).complete();
+                }
+            }
+            if (member == null) return false;
+
+            if (allowedRoleIds.isEmpty()) {
+                return member.isBoosting();
+            }
+
+            for (Role role : member.getRoles()) {
+                if (allowedRoleIds.contains(role.getId())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to check role for Discord ID " + discordId + ": " + e.getMessage());
+            return false;
         }
     }
 
