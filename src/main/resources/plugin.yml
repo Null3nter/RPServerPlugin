@@ -3,7 +3,7 @@ version: ${project.version}
 main: com.rpserver.plugin.RPServerPlugin
 api-version: '1.21'
 author: Null3nter
-description: Discord linking + role verification + plus-one system + chat sync
+description: Discord linking, role verification, plus-one, tickets, staff tools, chat sync
 commands:
   link:
     description: Generate a temporary code to link your Minecraft account with Discord
@@ -17,6 +17,14 @@ commands:
     description: Invite one friend as your plus-one (verified players only)
     usage: /plusone [player|remove]
     permission: rpserver.plusone
+  staff:
+    description: Manage manual bypass / staff entries
+    usage: /staff <add|remove|list> [player|UUID]
+    permission: rpserver.admin
+  ticket:
+    description: Create or close a support ticket
+    usage: /ticket <create|close> [reason]
+    permission: rpserver.ticket
 permissions:
   rpserver.link:
     description: Allows using the /link command
@@ -24,6 +32,9 @@ permissions:
   rpserver.plusone:
     description: Allows using the /plusone command
     default: true
+  rpserver.ticket:
+    description: Allows creating support tickets
+    default: true
   rpserver.admin:
-    description: Allows force-verifying players and other admin actions
+    description: Allows force-verifying players and staff management
     default: op
