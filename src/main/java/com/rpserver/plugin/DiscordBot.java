@@ -13,6 +13,9 @@ import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import org.bukkit.Bukkit;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public class DiscordBot extends ListenerAdapter {
@@ -20,7 +23,7 @@ public class DiscordBot extends ListenerAdapter {
     private final RPServerPlugin plugin;
     private JDA jda;
     private String guildId;
-    private String boosterRoleId;
+    private Set<String> allowedRoleIds = new HashSet<>();
 
     public DiscordBot(RPServerPlugin plugin) {
         this.plugin = plugin;
@@ -29,7 +32,17 @@ public class DiscordBot extends ListenerAdapter {
     public void start() throws Exception {
         String token = plugin.getConfig().getString("bot-token", "");
         this.guildId = plugin.getConfig().getString("guild-id", "");
-        this.boosterRoleId = plugin.getConfig().getString("booster-role-id", "");
+
+        // Load allowed role IDs (list)
+        List<String> roles = plugin.getConfig().getStringList("allowed-role-ids");
+        allowedRoleIds.clear();
+        if (roles != null) {
+            for (String r : roles) {
+                if (r != null && !r.isBlank() && !r.contains("YOUR_")) {
+                    allowedRoleIds.add(r.trim());
+                }
+            }
+        }
 
         if (token == null || token.isBlank() || token.contains("YOUR_DISCORD")) {
             plugin.getLogger().warning("Discord bot-token is not configured. Discord features disabled.");
@@ -66,6 +79,8 @@ public class DiscordBot extends ListenerAdapter {
             ).queue();
             plugin.getLogger().info("Registered /verify slash command globally (may take up to 1 hour to appear).");
         }
+
+        plugin.getLogger().info("Loaded " + allowedRoleIds.size() + " allowed Discord role(s) for verification.");
     }
 
     public void shutdown() {
@@ -94,10 +109,9 @@ public class DiscordBot extends ListenerAdapter {
             return;
         }
 
-        // Check booster role
+        // Check allowed roles
         Member member = event.getMember();
         if (member == null) {
-            // Try to retrieve
             if (event.getGuild() != null) {
                 member = event.getGuild().retrieveMember(event.getUser()).complete();
             }
@@ -108,23 +122,22 @@ public class DiscordBot extends ListenerAdapter {
             return;
         }
 
-        boolean hasBoosterRole = false;
-        if (boosterRoleId != null && !boosterRoleId.isBlank() && !boosterRoleId.contains("YOUR_")) {
-            Role role = member.getGuild().getRoleById(boosterRoleId);
-            if (role != null && member.getRoles().contains(role)) {
-                hasBoosterRole = true;
-            }
-            // Also accept nitro booster indicator if present
-            if (!hasBoosterRole && member.isBoosting()) {
-                hasBoosterRole = true;
+        boolean hasAllowedRole = false;
+
+        if (!allowedRoleIds.isEmpty()) {
+            for (Role role : member.getRoles()) {
+                if (allowedRoleIds.contains(role.getId())) {
+                    hasAllowedRole = true;
+                    break;
+                }
             }
         } else {
-            // No role configured → just check isBoosting
-            hasBoosterRole = member.isBoosting();
+            // Fallback: if no roles configured, accept anyone who is boosting
+            hasAllowedRole = member.isBoosting();
         }
 
-        if (!hasBoosterRole) {
-            event.getHook().sendMessage("❌ You need the **Server Booster** role to verify and play on this server.").queue();
+        if (!hasAllowedRole) {
+            event.getHook().sendMessage("❌ You do not have any of the required roles to verify and play on this server.").queue();
             return;
         }
 
