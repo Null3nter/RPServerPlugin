@@ -32,6 +32,8 @@ public class PlusOneCommand implements CommandExecutor {
 
         if (args.length == 0) {
             UUID current = manager.getPlusOne(player.getUniqueId());
+            long remaining = manager.getPlusOneCooldownRemaining(player.getUniqueId());
+
             if (current == null) {
                 player.sendMessage("§eYou have no plus-one. Usage: §a/plusone <player> §eor §a/plusone remove");
             } else {
@@ -39,16 +41,20 @@ public class PlusOneCommand implements CommandExecutor {
                 player.sendMessage("§aYour current plus-one is: §e" + (name != null ? name : current.toString()));
                 player.sendMessage("§7Use §a/plusone remove §7to revoke their access.");
             }
+
+            if (remaining > 0) {
+                player.sendMessage("§cCooldown: you can change your plus-one again in §e" + formatDuration(remaining) + "§c.");
+            }
             return true;
         }
 
         if (args[0].equalsIgnoreCase("remove") || args[0].equalsIgnoreCase("clear")) {
-            if (!manager.hasPlusOne(player.getUniqueId())) {
-                player.sendMessage("§eYou do not have a plus-one to remove.");
-                return true;
+            String error = manager.removePlusOne(player.getUniqueId());
+            if (error != null) {
+                player.sendMessage("§c" + error);
+            } else {
+                player.sendMessage("§aYour plus-one has been removed.");
             }
-            manager.removePlusOne(player.getUniqueId());
-            player.sendMessage("§aYour plus-one has been removed.");
             return true;
         }
 
@@ -78,5 +84,19 @@ public class PlusOneCommand implements CommandExecutor {
         target.sendMessage("§7You can play as long as they keep their Discord role / boost status.");
 
         return true;
+    }
+
+    private String formatDuration(long seconds) {
+        if (seconds < 60) return seconds + " seconds";
+        long minutes = seconds / 60;
+        long secs = seconds % 60;
+        if (minutes < 60) {
+            return minutes + " minute" + (minutes == 1 ? "" : "s")
+                    + (secs > 0 ? " and " + secs + " second" + (secs == 1 ? "" : "s") : "");
+        }
+        long hours = minutes / 60;
+        long mins = minutes % 60;
+        return hours + " hour" + (hours == 1 ? "" : "s")
+                + (mins > 0 ? " and " + mins + " minute" + (mins == 1 ? "" : "s") : "");
     }
 }
