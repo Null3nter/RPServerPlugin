@@ -10,6 +10,7 @@ public final class RPServerPlugin extends JavaPlugin {
     private DiscordBot discordBot;
     private PlayerListener playerListener;
     private AuditLogger auditLogger;
+    private TicketManager ticketManager;
 
     @Override
     public void onEnable() {
@@ -19,6 +20,7 @@ public final class RPServerPlugin extends JavaPlugin {
         this.linkManager = new LinkManager(this);
         this.linkManager.load();
         this.auditLogger = new AuditLogger(this);
+        this.ticketManager = new TicketManager(this);
 
         getCommand("link").setExecutor(new LinkCommand(this));
         getCommand("forceverify").setExecutor(new ForceVerifyCommand(this));
@@ -62,4 +64,5 @@ public final class RPServerPlugin extends JavaPlugin {
     public DiscordBot getDiscordBot() { return discordBot; }
     public PlayerListener getPlayerListener() { return playerListener; }
     public AuditLogger getAuditLogger() { return auditLogger; }
+    public TicketManager getTicketManager() { return ticketManager; }
 }
