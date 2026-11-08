@@ -62,8 +62,9 @@ This file is included in every GitHub Release so you always have a complete reco
 
 #### 9. Automatic Builds & Releases
 - Every push to `main` triggers a GitHub Actions build
-- A continuous **Latest Build** release is created/updated with the shaded `.jar` attached
-- Tagged releases (`v*`) produce versioned releases with this full log
+- **A brand-new unique GitHub Release is created for every update** (tag format: `v{version}-{shortsha}`)
+- Each release includes the shaded `.jar` and this full changelog
+- The newest release is always marked as the latest
 
 ---
 
@@ -108,6 +109,7 @@ restriction-message: "&cYou must link your Discord account..."
 - Cooldown is persisted and survives restarts
 - Automatic role-loss revocation does not start the cooldown
 - Full feature log included in every GitHub Release
+- Every code push now creates a **new unique release** (no longer overwrites a single "latest" release)
 
 ### 1.2.0
 - Full Plus-One system (`/plusone`)
