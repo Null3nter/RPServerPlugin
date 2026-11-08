@@ -40,9 +40,20 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        // Already linked
+        // Already fully linked
         if (manager.isLinked(uuid)) {
             manager.setRestricted(uuid, false);
+            return;
+        }
+
+        // Check if this player is a valid plus-one of someone
+        if (manager.isPlusOne(uuid)) {
+            UUID booster = manager.getBoosterOf(uuid);
+            // We will re-validate periodically; for now grant access
+            manager.setRestricted(uuid, false);
+            String boosterName = booster != null ? org.bukkit.Bukkit.getOfflinePlayer(booster).getName() : "someone";
+            player.sendMessage("§aYou are playing as a plus-one of §e" + boosterName + "§a.");
+            player.sendMessage("§7Your access lasts only while they keep their Discord role.");
             return;
         }
 
@@ -117,8 +128,8 @@ public class PlayerListener implements Listener {
     public void onCommand(PlayerCommandPreprocessEvent event) {
         if (plugin.getLinkManager().isRestricted(event.getPlayer().getUniqueId())) {
             String msg = event.getMessage().toLowerCase();
-            // Allow only /link
-            if (!msg.startsWith("/link")) {
+            // Allow /link and also /plusone (for when someone is inviting them while restricted is not the case, but safe)
+            if (!msg.startsWith("/link") && !msg.startsWith("/plusone")) {
                 event.setCancelled(true);
                 event.getPlayer().sendMessage("§cYou can only use §e/link §cwhile restricted.");
             }
