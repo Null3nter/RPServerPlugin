@@ -1,10 +1,13 @@
-name: Build Plugin
+name: Build & Release Plugin
 
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -24,8 +27,28 @@ jobs:
       - name: Build with Maven
         run: mvn -B package --file pom.xml
 
-      - name: Upload plugin JAR
+      - name: Upload plugin JAR (Actions artifact)
         uses: actions/upload-artifact@v4
         with:
           name: RPServerPlugin
           path: target/RPServerPlugin-*.jar
+
+      # Only create a real GitHub Release on pushes to main (not on PRs)
+      - name: Create / Update continuous "latest" Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          body: |
+            **Automatic continuous build**
+
+            This release is updated on every push to `main`.
+
+            Download the `.jar` below and drop it into your server's `plugins/` folder.
+
+            Commit: ${{ github.sha }}
+          files: target/RPServerPlugin-*.jar
+          prerelease: true
+          make_latest: true
+          generate_release_notes: false
