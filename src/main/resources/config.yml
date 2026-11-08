@@ -1,5 +1,4 @@
 # RPServerPlugin Configuration
-# Fill in your Discord bot details below.
 
 # Discord Bot Token (from Discord Developer Portal)
 bot-token: "YOUR_DISCORD_BOT_TOKEN"
@@ -7,37 +6,41 @@ bot-token: "YOUR_DISCORD_BOT_TOKEN"
 # Your Discord Server (Guild) ID
 guild-id: "YOUR_DISCORD_SERVER_ID"
 
-# List of Discord Role IDs that are allowed to verify / join
-# Players must have at least ONE of these roles to successfully /verify
-allowed-role-ids: []
+# Discord user ID of the guild owner (required for hierarchy commands)
+owner-id: "DISCORD_GUILD_OWNER_ID"
 
-# Staff role IDs – members with these roles can use Discord staff commands
-# (/manual-link, close tickets, etc.)
+# Co-owner Discord user IDs (managed via /management-owner)
+co-owner-ids: []
+
+# Bot-admin Discord role IDs (managed via /management-owner-admin)
+bot-admin-role-ids: []
+
+# Staff Discord role IDs (managed via /management-admin)
 staff-role-ids: []
 
-# Discord Webhook URL for in-game chat synchronization
-chat-webhook-url: "YOUR_DISCORD_WEBHOOK_URL"
+# Roles allowed to /verify and play
+allowed-role-ids: []
 
-# Audit / staff log webhook – receives admin actions, tickets, force-verifies, etc.
-audit-webhook-url: "YOUR_AUDIT_WEBHOOK_URL"
+# In-game chat → Discord webhook
+chat-webhook-url: "YOUR_CHAT_WEBHOOK_URL"
 
-# Optional: Discord category ID where ticket channels are created
-# Leave blank to create channels at the top level of the server
-ticket-category-id: ""
+# Channel where /ticket messages are posted as embeds
+ticket-channel-id: "DISCORD_TICKET_CHANNEL_ID"
 
-# Optional: Channel ID where ticket transcripts are posted when a ticket is closed
-ticket-transcript-channel-id: ""
+# Audit log webhook for all admin/management actions
+audit-log-webhook-url: "YOUR_AUDIT_WEBHOOK_URL"
 
-# Players who can join without Discord linking (UUID or username)
-# Can also be managed in-game with /staff add|remove
+# Players who skip Discord linking (UUID or username)
 manual-bypass-players: []
 
-# How long (in seconds) a generated link code remains valid
+# Staff-linked accounts (UUID -> Discord ID) – managed by /stafflink
+manual-staff-link-list: {}
+
+# Link code lifetime in seconds
 code-expiry-seconds: 300
 
-# Cooldown (in seconds) after adding or removing a plus-one before you can change it again
-# Default: 3600 = 1 hour
+# Cooldown after changing plus-one (seconds)
 plusone-cooldown-seconds: 3600
 
-# Message shown to restricted (unlinked) players
-restriction-message: "&cYou must link your Discord account to play. Use &e/link &cthen verify in Discord with the code."
+# Message shown to restricted players
+restriction-message: "&cYou must link your Discord account to play!"
