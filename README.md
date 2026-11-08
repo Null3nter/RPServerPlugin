@@ -7,6 +7,7 @@ No external bot hosting required.
 
 - **Account linking** via temporary 4-digit codes (`/link` in-game → `/verify <code>` in Discord)
 - **Multiple allowed roles** – configure a list of Discord role IDs that are permitted to verify
+- **Plus-One system** – verified players can invite **one friend**. The friend can play only while the booster still has an allowed Discord role
 - **Admin force-verify** – `/forceverify <player>` for owners/admins to manually unlock accounts
 - **Manual bypass list** in `config.yml` (UUID or username) – skips Discord entirely
 - **Restriction system** – unlinked players cannot move, interact, break/place blocks, or use most commands until verified
@@ -50,11 +51,20 @@ manual-bypass-players:
 
 ## Commands
 
-| Command                    | Description                                              | Permission      |
-|----------------------------|----------------------------------------------------------|-----------------|
-| `/link`                    | Generates a temporary 4-digit code for Discord           | `rpserver.link` |
-| `/forceverify <player>`    | Manually verify a player (admin/owner)                   | `rpserver.admin`|
-| `/verify <code>` (Discord) | Links the Minecraft account if the user has an allowed role | –             |
+| Command                    | Description                                              | Permission         |
+|----------------------------|----------------------------------------------------------|--------------------|
+| `/link`                    | Generates a temporary 4-digit code for Discord           | `rpserver.link`    |
+| `/plusone [player\|remove]`| Invite one friend or remove your current plus-one        | `rpserver.plusone` |
+| `/forceverify <player>`    | Manually verify a player (admin/owner)                   | `rpserver.admin`   |
+| `/verify <code>` (Discord) | Links the Minecraft account if the user has an allowed role | –                |
+
+### Plus-One rules
+
+- Only **verified / linked** players can use `/plusone`.
+- Each verified player can have **exactly one** plus-one at a time.
+- The plus-one can join and play freely.
+- Every few minutes the plugin checks whether the booster still has one of the `allowed-role-ids`.  
+  If they lost the role (or stopped boosting), the plus-one is automatically restricted again.
 
 ## Building
 
@@ -62,7 +72,7 @@ manual-bypass-players:
 mvn clean package
 ```
 
-The shaded JAR will be in `target/RPServerPlugin-1.1.0.jar`.
+The shaded JAR will be in `target/RPServerPlugin-1.2.0.jar`.
 
 ## License
 
