@@ -1,134 +1,72 @@
 # RPServerPlugin – Full Feature & Changelog Log
 
-This file is included in every GitHub Release so you always have a complete record of what the plugin does.
-
 ---
 
 ## Current Version: 1.3.0
 
 ### Core Features
 
-#### 1. Discord Account Linking
-- Players run `/link` in-game → receive a temporary 4-digit code
-- Code expires after a configurable time (`code-expiry-seconds`, default 300s)
-- In Discord they run the slash command `/verify <code>`
-- The bot checks that the Discord user has **at least one** of the roles listed in `allowed-role-ids`
-- On success the Minecraft UUID is permanently linked to the Discord ID and the player is unrestricted
+1. **Discord Account Linking** – `/link` → 4-digit code → Discord `/verify <code>` (requires an `allowed-role-ids` role)
+2. **Restriction System** – Unlinked players cannot move/interact; allowed commands: `/link`, `/ticket`
+3. **Manual Bypass** – `manual-bypass-players` + `/staff add|remove|list`
+4. **Staff Links** – `/stafflink <player> <discord_id>` + `manual-staff-link-list`
+5. **Plus-One System** – `/plusone` with cooldown and auto-revoke on role loss
+6. **Live Chat Sync** – In-game chat → `chat-webhook-url`
+7. **Support Tickets** – `/ticket <message>` posts a rich embed to `ticket-channel-id`
+8. **Hierarchy Management (Discord)**
+   - `/management-owner` – Guild Owner only; manages `co-owner-ids`
+   - `/management-admin` – Owner/Co-Owners; manages `staff-role-ids`
+   - `/management-owner-admin` – Owner/Co-Owners; manages `bot-admin-role-ids`
+9. **Audit Logging** – All admin actions → `audit-log-webhook-url`
+10. **Self-contained JDA bot** (Maven Shade)
+11. **Unique GitHub Release on every push**
 
-#### 2. Allowed Role List
-- Config key: `allowed-role-ids` (list of Discord role snowflake IDs)
-- A player only needs **any one** of the listed roles to verify
-
-#### 3. Restriction System
-- Unlinked players are restricted on join
-- Cannot move, interact, break/place blocks, drop items, or use most commands
-- Allowed while restricted: `/link`, `/ticket`, `/plusone`
-- Fully linked players, manual-bypass players, and valid plus-ones are unrestricted
-
-#### 4. Manual Bypass / Staff List
-- Config key: `manual-bypass-players`
-- Also managed in-game with `/staff add|remove|list`
-- Players on this list skip Discord verification entirely
-
-#### 5. Admin Force-Verify
-- `/forceverify <player>` (permission `rpserver.admin`)
-- Instantly links and unrestricts a player without Discord
-
-#### 6. Plus-One System
-- Verified players can invite exactly one friend with `/plusone <player>`
-- Cooldown after add/remove (`plusone-cooldown-seconds`, default 1 hour)
-- Auto-revoked if the booster loses their allowed Discord role
-
-#### 7. Support Ticket System (NEW in 1.3.0)
-- **In-game:** `/ticket create <reason>` or `/ticket <reason>`, `/ticket close`
-- **Discord:** `/ticket create <reason>`, `/ticket close`
-- Creates a private Discord channel visible only to the creator and staff roles
-- Optional category via `ticket-category-id`
-- On close: posts a transcript to `ticket-transcript-channel-id` and deletes the channel
-
-#### 8. Staff Management (NEW in 1.3.0)
-- Config: `staff-role-ids` – Discord roles that can use staff commands
-- In-game: `/staff add|remove|list <player|UUID>`
-- Discord: `/manual-link <minecraft> <discord user>` – staff can link accounts on behalf of players
-
-#### 9. Audit Logging (NEW in 1.3.0)
-- Config: `audit-webhook-url`
-- Logs: force-verifies, staff add/remove, account links, ticket create/close, manual links
-
-#### 10. Live Chat Synchronization
-- In-game chat forwarded to `chat-webhook-url`
-
-#### 11. Self-Contained Discord Bot
-- JDA shaded into the plugin JAR – no external bot hosting
-
-#### 12. Automatic Builds & Releases
-- Every push to `main` creates a **new unique GitHub Release** with the JAR + this changelog
-
----
-
-## Configuration Reference (`config.yml`)
+### Configuration
 
 ```yaml
-bot-token: "YOUR_DISCORD_BOT_TOKEN"
-guild-id: "YOUR_DISCORD_SERVER_ID"
-
-allowed-role-ids:
-  - "123456789012345678"
-
-staff-role-ids:
-  - "111222333444555666"
-
-chat-webhook-url: "YOUR_DISCORD_WEBHOOK_URL"
-audit-webhook-url: "YOUR_AUDIT_WEBHOOK_URL"
-
-ticket-category-id: ""
-ticket-transcript-channel-id: ""
-
+bot-token: "..."
+guild-id: "..."
+owner-id: "DISCORD_GUILD_OWNER_ID"
+co-owner-ids: []
+bot-admin-role-ids: []
+staff-role-ids: []
+allowed-role-ids: []
+chat-webhook-url: "..."
+ticket-channel-id: "..."
+audit-log-webhook-url: "..."
 manual-bypass-players: []
-
+manual-staff-link-list: {}
 code-expiry-seconds: 300
 plusone-cooldown-seconds: 3600
-
-restriction-message: "&cYou must link your Discord account..."
+restriction-message: "&cYou must link your Discord account to play!"
 ```
 
----
+### Commands
 
-## Commands
+| Command | Description | Access |
+|---------|-------------|--------|
+| `/link` | Generate verify code | Everyone |
+| `/plusone [player\|remove]` | Plus-one invite | Verified |
+| `/ticket <message>` | Submit support ticket | Everyone |
+| `/forceverify <player>` | Force verify | `rpserver.admin` |
+| `/staff add\|remove\|list` | Manage bypass list | `rpserver.admin` |
+| `/stafflink <player> <discord_id>` | Staff-link account | `rpserver.admin` |
+| `/verify <code>` (Discord) | Link account | Allowed role |
+| `/management-owner` (Discord) | Manage co-owners | Guild Owner |
+| `/management-admin` (Discord) | Manage staff roles | Owner / Co-Owner |
+| `/management-owner-admin` (Discord) | Manage bot-admin roles | Owner / Co-Owner |
 
-| Command | Description | Permission / Role |
-|---------|-------------|-------------------|
-| `/link` | Generate temporary Discord verification code | `rpserver.link` |
-| `/plusone [player\|remove]` | Manage your one allowed friend invite | `rpserver.plusone` |
-| `/ticket create\|close [reason]` | Create or close a support ticket | `rpserver.ticket` |
-| `/forceverify <player>` | Admin: manually verify a player | `rpserver.admin` |
-| `/staff add\|remove\|list [player]` | Admin: manage bypass / staff entries | `rpserver.admin` |
-| `/verify <code>` (Discord) | Link Minecraft account | Allowed role |
-| `/ticket create\|close` (Discord) | Create or close a support ticket | Everyone / Staff |
-| `/manual-link <player> <user>` (Discord) | Staff: manually link accounts | Staff role |
+### Version History
 
----
+#### 1.3.0
+- Hierarchy management slash commands
+- Ticket embeds to a single channel
+- `/stafflink`, owner/co-owner/bot-admin config hierarchy
+- Audit webhook for all admin actions
 
-## Version History
-
-### 1.3.0
-- Support ticket system (in-game + Discord)
-- Private ticket channels with staff-only access
-- Ticket transcripts on close
-- `/staff add|remove|list` for dynamic bypass management
-- Discord `/manual-link` for staff
-- `staff-role-ids` configuration
-- Audit webhook logging for admin and ticket actions
-
-### 1.2.1
-- Plus-one cooldown
+#### 1.2.x
+- Plus-one system + cooldown
 - Unique release per push
 
-### 1.2.0
-- Plus-one system
-
-### 1.1.0
-- Multi-role allow list + `/forceverify`
-
-### 1.0.0
-- Initial release
+#### 1.1.0 / 1.0.0
+- Multi-role allow list, force-verify, core linking & chat sync
