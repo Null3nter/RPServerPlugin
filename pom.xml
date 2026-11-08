@@ -6,11 +6,11 @@
 
     <groupId>com.rpserver</groupId>
     <artifactId>RPServerPlugin</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
 
     <name>RPServerPlugin</name>
-    <description>Minecraft Paper plugin with integrated Discord bot for account linking, booster verification, and chat sync.</description>
+    <description>Minecraft Paper plugin with integrated Discord bot for account linking, role verification, and chat sync.</description>
 
     <properties>
         <java.version>21</java.version>
