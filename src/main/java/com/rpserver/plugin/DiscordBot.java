@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
@@ -53,11 +54,21 @@ public class DiscordBot extends ListenerAdapter {
 
         jda.awaitReady();
 
-        Guild guild = resolveGuild();
+        registerSlashCommands();
+        plugin.getLogger().info("Loaded " + allowedRoleIds.size() + " allowed role(s).");
+    }
 
-        var commands = List.of(
+    private void registerSlashCommands() {
+        List<SlashCommandData> commands = List.of(
                 Commands.slash("verify", "Link your Minecraft account using the code from /link")
                         .addOption(OptionType.STRING, "code", "The 4-digit code from Minecraft", true),
+
+                Commands.slash("ticket", "Open a support ticket with the RP staff team")
+                        .addSubcommands(
+                                new SubcommandData("create", "Create a support ticket")
+                                        .addOption(OptionType.STRING, "message", "Describe your issue", true),
+                                new SubcommandData("help", "How the ticket system works")
+                        ),
 
                 Commands.slash("management-owner", "Manage co-owners (Guild Owner only)")
                         .addSubcommands(
@@ -87,15 +98,22 @@ public class DiscordBot extends ListenerAdapter {
                         )
         );
 
+        Guild guild = resolveGuild();
         if (guild != null) {
-            guild.updateCommands().addCommands(commands).queue();
-            plugin.getLogger().info("Registered Discord slash commands in " + guild.getName());
+            // Guild commands appear instantly in the RP hub server
+            guild.updateCommands().addCommands(commands).queue(
+                    success -> plugin.getLogger().info("Registered " + commands.size()
+                            + " slash commands on guild: " + guild.getName() + " (" + guild.getId() + ")"),
+                    error -> plugin.getLogger().severe("Failed to register guild commands: " + error.getMessage())
+            );
         } else {
-            jda.updateCommands().addCommands(commands).queue();
-            plugin.getLogger().info("Registered Discord slash commands globally.");
+            plugin.getLogger().warning("guild-id is missing or invalid – registering commands GLOBALLY (can take up to 1 hour to appear).");
+            plugin.getLogger().warning("Set a valid guild-id in config.yml so commands show up immediately on your RP hub.");
+            jda.updateCommands().addCommands(commands).queue(
+                    success -> plugin.getLogger().info("Registered slash commands globally."),
+                    error -> plugin.getLogger().severe("Failed to register global commands: " + error.getMessage())
+            );
         }
-
-        plugin.getLogger().info("Loaded " + allowedRoleIds.size() + " allowed role(s).");
     }
 
     public void shutdown() {
@@ -103,8 +121,15 @@ public class DiscordBot extends ListenerAdapter {
     }
 
     private Guild resolveGuild() {
+        if (jda == null) return null;
         if (guildId != null && !guildId.isBlank() && !guildId.contains("YOUR_")) {
-            try { return jda.getGuildById(guildId); } catch (Exception ignored) {}
+            try {
+                Guild g = jda.getGuildById(guildId.trim());
+                if (g != null) return g;
+                plugin.getLogger().warning("Bot is online but not in guild " + guildId + ". Invite the bot to your RP hub server.");
+            } catch (Exception e) {
+                plugin.getLogger().warning("Invalid guild-id: " + e.getMessage());
+            }
         }
         return null;
     }
@@ -153,9 +178,62 @@ public class DiscordBot extends ListenerAdapter {
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         switch (event.getName()) {
             case "verify" -> handleVerify(event);
+            case "ticket" -> handleTicket(event);
             case "management-owner" -> handleManagementOwner(event);
             case "management-admin" -> handleManagementRoles(event, "staff-role-ids", "Staff roles");
             case "management-owner-admin" -> handleManagementRoles(event, "bot-admin-role-ids", "Bot-admin roles");
+        }
+    }
+
+    private void handleTicket(SlashCommandInteractionEvent event) {
+        String sub = event.getSubcommandName();
+        if (sub == null) return;
+
+        if ("help".equals(sub)) {
+            event.reply("**Support Tickets (RP Hub)**\n\n"
+                    + "• `/ticket create <message>` – Open a ticket from Discord\n"
+                    + "• In Minecraft: `/ticket <message>`\n\n"
+                    + "Tickets are posted to the staff ticket channel for the team to handle."
+            ).setEphemeral(true).queue();
+            return;
+        }
+
+        if ("create".equals(sub)) {
+            event.deferReply(true).queue();
+            String message = event.getOption("message") != null
+                    ? event.getOption("message").getAsString()
+                    : "No message provided";
+
+            String channelId = plugin.getConfig().getString("ticket-channel-id", "");
+            if (channelId == null || channelId.isBlank() || channelId.contains("DISCORD_")) {
+                event.getHook().sendMessage("❌ Ticket channel is not configured on the server.").queue();
+                return;
+            }
+
+            TextChannel channel = jda.getTextChannelById(channelId);
+            if (channel == null) {
+                event.getHook().sendMessage("❌ Could not find the ticket channel. Check `ticket-channel-id`.").queue();
+                return;
+            }
+
+            EmbedBuilder embed = new EmbedBuilder()
+                    .setTitle("Support Ticket (Discord)")
+                    .setColor(Color.ORANGE)
+                    .addField("Discord User", event.getUser().getAsMention() + " (`" + event.getUser().getId() + "`)", false)
+                    .addField("Message", message, false)
+                    .setTimestamp(java.time.Instant.now())
+                    .setFooter("RP Hub Support");
+
+            channel.sendMessageEmbeds(embed.build()).queue(
+                    success -> event.getHook().sendMessage("✅ Your ticket was submitted to staff.").queue(),
+                    err -> event.getHook().sendMessage("❌ Failed to post ticket: " + err.getMessage()).queue()
+            );
+
+            if (plugin.getAuditLogger() != null) {
+                plugin.getAuditLogger().log("Ticket Submitted (Discord)",
+                        "**User:** " + event.getUser().getAsTag()
+                                + " (`" + event.getUser().getId() + "`)\n**Message:** " + message);
+            }
         }
     }
 
@@ -317,7 +395,7 @@ public class DiscordBot extends ListenerAdapter {
         }
     }
 
-    /** Posts a support ticket embed to the configured ticket channel. */
+    /** Posts a support ticket embed from Minecraft. */
     public void sendTicketEmbed(Player player, String message) {
         if (jda == null) {
             Bukkit.getScheduler().runTask(plugin, () ->
@@ -340,12 +418,13 @@ public class DiscordBot extends ListenerAdapter {
         }
 
         EmbedBuilder embed = new EmbedBuilder()
-                .setTitle("Support Ticket")
+                .setTitle("Support Ticket (Minecraft)")
                 .setColor(Color.ORANGE)
                 .addField("Player", player.getName(), true)
                 .addField("UUID", player.getUniqueId().toString(), true)
                 .addField("Message", message, false)
-                .setTimestamp(java.time.Instant.now());
+                .setTimestamp(java.time.Instant.now())
+                .setFooter("RP Hub Support");
 
         channel.sendMessageEmbeds(embed.build()).queue(
                 success -> Bukkit.getScheduler().runTask(plugin, () ->
@@ -355,7 +434,7 @@ public class DiscordBot extends ListenerAdapter {
         );
 
         if (plugin.getAuditLogger() != null) {
-            plugin.getAuditLogger().log("Ticket Submitted",
+            plugin.getAuditLogger().log("Ticket Submitted (Minecraft)",
                     "**Player:** " + player.getName() + " (`" + player.getUniqueId() + "`)\n**Message:** " + message);
         }
     }
