@@ -1,0 +1,27 @@
+# RPServerPlugin Configuration
+# Fill in your Discord bot details below.
+
+# Discord Bot Token (from Discord Developer Portal)
+bot-token: "YOUR_DISCORD_BOT_TOKEN"
+
+# Your Discord Server (Guild) ID
+guild-id: "YOUR_DISCORD_SERVER_ID"
+
+# Role ID that identifies Server Boosters
+booster-role-id: "YOUR_BOOSTER_ROLE_ID"
+
+# Discord Webhook URL for in-game chat synchronization
+chat-webhook-url: "YOUR_DISCORD_WEBHOOK_URL"
+
+# Players who can join without Discord linking (UUID or username)
+# Example:
+# manual-bypass-players:
+#   - "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+#   - "Notch"
+manual-bypass-players: []
+
+# How long (in seconds) a generated link code remains valid
+code-expiry-seconds: 300
+
+# Message shown to restricted (unlinked) players
+restriction-message: "&cYou must link your Discord account to play. Use &e/link &cthen verify in Discord with the code."
