@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B package --file pom.xml
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/RPServerPlugin-*.jar
+          generate_release_notes: true
+          body: |
+            ## RPServerPlugin ${{ github.ref_name }}
+
+            ### Changes in this release
+            - Support for a **list of allowed Discord role IDs** (`allowed-role-ids`)
+            - New admin command `/forceverify <player>` to manually verify accounts
+            - Improved documentation
+
+            Download the JAR below and drop it into your `plugins/` folder.
